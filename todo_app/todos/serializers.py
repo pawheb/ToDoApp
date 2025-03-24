@@ -14,6 +14,12 @@ class LoginSerializer(serializers.Serializer):
     username = serializers.CharField(required=True)  # Username is required
     password = serializers.CharField(required=True, write_only=True)  # Password is required, only for writing
 
+class InvitationCreateSerializer(serializers.Serializer):
+    group_id = serializers.IntegerField(required=True)
+    expiration_days = serializers.IntegerField(required=False, default=7)
+    max_uses = serializers.IntegerField(required=False, default=1)
+    email = serializers.EmailField(required=True)
+
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)  # Hasło tylko do zapisu
 
@@ -30,7 +36,7 @@ class UserSerializer(serializers.ModelSerializer):
         return user
 
 class GroupSerializer(serializers.ModelSerializer):
-    members = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), many=True)
+    members = UserSerializer(many=True)  # Używamy serializatora dla użytkowników
 
     class Meta:
         model = Group
