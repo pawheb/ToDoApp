@@ -1,5 +1,6 @@
 from django.urls import path
 from .views import (
+    GroupCreateView,
     RegisterView,
     LoginView,
     ToDoByUserView,
@@ -7,7 +8,7 @@ from .views import (
     ToDoDetailView,
     ToDoListCreateView,
     GroupListView,  
-    GroupDetailView,
+    GroupDetailView
 )
 from rest_framework_simplejwt.views import TokenRefreshView
 
@@ -30,6 +31,8 @@ urlpatterns = [
     path('todos/', ToDoListCreateView.as_view(), name='todo-list-create'),
 
     # CRUD for groups – available only for admin
-    path('groups/', GroupListView.as_view(), name='group-list'),  # Use GroupListView for listing groups
+    path('groups/', GroupListView.as_view(), name='group-list'),
     path('groups/<int:pk>/', GroupDetailView.as_view(), name='group-detail'),
+    path('groups/create/', GroupCreateView.as_view(), name='group-create'),
+    
 ]

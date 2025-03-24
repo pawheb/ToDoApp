@@ -56,6 +56,7 @@ def get_filtered_todos(request, user=None):
 
     return queryset
 
+
 # Returning tasks assigned directly to the user (not belonging to any group)
 class ToDoByUserView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -73,18 +74,18 @@ class ToDoByGroupView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        # Pobranie zalogowanego użytkownika
         user = request.user
-        groups = user.groups.all()
         
-        grouped_todos = {}
+        # Filtrowanie zadań, które są przypisane do tego użytkownika i mają przypisaną grupę
+        todos = ToDo.objects.filter(user=user, group__isnull=False)
         
-        # Grouping tasks by group
-        for group in groups:
-            todos = get_filtered_todos(request, user=user).filter(group=group)
-            if todos:
-                grouped_todos[group.name] = ToDoSerializer(todos, many=True).data
+        # Serializacja danych
+        serializer = ToDoSerializer(todos, many=True)
+        
+        # Zwrócenie danych w odpowiedzi
+        return Response(serializer.data)
 
-        return Response(grouped_todos)
 
 # Task detail view – allows updating and deleting a task
 class ToDoDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -147,3 +148,10 @@ class GroupDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Group.objects.all()
     serializer_class = GroupSerializer
     permission_classes = [permissions.IsAdminUser]
+
+class GroupCreateView(generics.CreateAPIView):
+    queryset = Group.objects.all()
+    serializer_class = GroupSerializer
+    permission_classes = [permissions.IsAdminUser]  # Only accesible for admins
+
+
