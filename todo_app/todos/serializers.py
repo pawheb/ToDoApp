@@ -10,6 +10,10 @@ class ToDoSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['user', 'created_at']
 
+class LoginSerializer(serializers.Serializer):
+    username = serializers.CharField(required=True)  # Username is required
+    password = serializers.CharField(required=True, write_only=True)  # Password is required, only for writing
+
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)  # Hasło tylko do zapisu
 

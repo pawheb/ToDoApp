@@ -4,9 +4,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from .models import ToDo, Group
-from .serializers import ToDoSerializer, UserSerializer, GroupSerializer
+from .serializers import LoginSerializer, ToDoSerializer, UserSerializer, GroupSerializer
 from rest_framework.permissions import AllowAny
-
+from django.contrib.auth import authenticate
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 # User registration
 class RegisterView(generics.CreateAPIView):
     permission_classes = [AllowAny]
@@ -15,22 +17,38 @@ class RegisterView(generics.CreateAPIView):
 
 # Login – JWT token generation
 class LoginView(APIView):
-    permission_classes = [AllowAny]
-
+    permission_classes = [AllowAny]  # Allow any user to access this view, even if not authenticated
+    
+    # Define the expected input parameters using the `swagger_auto_schema` decorator
+    @swagger_auto_schema(
+        operation_description="Login and generate JWT tokens.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'username': openapi.Schema(type=openapi.TYPE_STRING, description='The username of the user'),
+                'password': openapi.Schema(type=openapi.TYPE_STRING, description='The password of the user')
+            },
+            required=['username', 'password']
+        ),
+    )
     def post(self, request):
-        from django.contrib.auth import authenticate
+        # Retrieve the username and password from the request
         username = request.data.get('username')
         password = request.data.get('password')
+
+        # Authenticate the user using Django's built-in authenticate function
         user = authenticate(username=username, password=password)
 
         if user:
+            # If authentication is successful, generate the JWT token pair
             refresh = RefreshToken.for_user(user)
             return Response({
                 'refresh': str(refresh),
                 'access': str(refresh.access_token),
             })
-        return Response({'error': 'Invalid Credentials'}, status=400)
-
+        else:
+            # If authentication fails, return an error response
+            return Response({'error': 'Invalid Credentials'}, status=400)
 # Filtering tasks by user, group, and priority
 def get_filtered_todos(request, user=None):
     """
