@@ -1,23 +1,28 @@
+from django.contrib.auth import get_user_model
 from rest_framework import generics, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth import get_user_model
 from .models import ToDo, Group
 from .serializers import ToDoSerializer, UserSerializer, GroupSerializer
+from rest_framework.permissions import AllowAny
 
 # User registration
 class RegisterView(generics.CreateAPIView):
+    permission_classes = [AllowAny]
     queryset = get_user_model().objects.all()  # Using the custom user model
     serializer_class = UserSerializer
 
 # Login – JWT token generation
 class LoginView(APIView):
+    permission_classes = [AllowAny]
+
     def post(self, request):
         from django.contrib.auth import authenticate
         username = request.data.get('username')
         password = request.data.get('password')
         user = authenticate(username=username, password=password)
+
         if user:
             refresh = RefreshToken.for_user(user)
             return Response({
@@ -56,7 +61,6 @@ def get_filtered_todos(request, user=None):
 
     return queryset
 
-
 # Returning tasks assigned directly to the user (not belonging to any group)
 class ToDoByUserView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -65,7 +69,7 @@ class ToDoByUserView(APIView):
         # Filtering tasks assigned directly to the user (i.e., without a group)
         todos = get_filtered_todos(request)
         todos_without_group = todos.filter(group=None)
-        
+
         # Returning tasks that are not assigned to a group
         return Response(ToDoSerializer(todos_without_group, many=True).data)
 
@@ -74,18 +78,17 @@ class ToDoByGroupView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        # Pobranie zalogowanego użytkownika
+        # Retrieve the logged-in user
         user = request.user
-        
-        # Filtrowanie zadań, które są przypisane do tego użytkownika i mają przypisaną grupę
-        todos = ToDo.objects.filter(user=user, group__isnull=False)
-        
-        # Serializacja danych
-        serializer = ToDoSerializer(todos, many=True)
-        
-        # Zwrócenie danych w odpowiedzi
-        return Response(serializer.data)
 
+        # Filter tasks assigned to this user and belonging to a group
+        todos = ToDo.objects.filter(user=user, group__isnull=False)
+
+        # Serialize the data
+        serializer = ToDoSerializer(todos, many=True)
+
+        # Return the response
+        return Response(serializer.data)
 
 # Task detail view – allows updating and deleting a task
 class ToDoDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -113,7 +116,7 @@ class ToDoListCreateView(generics.ListCreateAPIView):
         group_id = data.get('group')
         user_id = data.get('user')
 
-        # For admin – full control (optional)
+        # Admin users have full control
         if user.is_superuser:
             if group_id:
                 group_instance = Group.objects.get(id=group_id)
@@ -123,7 +126,7 @@ class ToDoListCreateView(generics.ListCreateAPIView):
                         group=group_instance,
                         title=data['title'],
                         description=data.get('description', ''),
-                        priority=data.get('priority', 'Medium'),
+                        priority=int(data.get('priority', 2)),
                         due_date=data.get('due_date', None)
                     )
                 return
@@ -132,26 +135,26 @@ class ToDoListCreateView(generics.ListCreateAPIView):
                 serializer.save(user=target_user)
                 return
 
-        # For regular users – no group or assignment to other users allowed
+        # Regular users cannot assign tasks to others or to a group
         if group_id or user_id:
             raise PermissionError("You cannot assign tasks to others or to a group.")
-        
-        serializer.save(user=user)  # Task assigned to the user
 
-# View for admin - list of groups
+        serializer.save(user=user)  # Task is assigned to the current user
+
+# View for admins – list of groups
 class GroupListView(generics.ListAPIView):
     queryset = Group.objects.all()  # Retrieve all groups
     serializer_class = GroupSerializer  # Use the Group serializer to format the response
     permission_classes = [permissions.IsAdminUser]  # Only accessible to admins
 
+# View for admins – group detail view
 class GroupDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Group.objects.all()
     serializer_class = GroupSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [permissions.IsAdminUser]  # Only accessible to admins
 
+# View for admins – create a new group
 class GroupCreateView(generics.CreateAPIView):
     queryset = Group.objects.all()
     serializer_class = GroupSerializer
-    permission_classes = [permissions.IsAdminUser]  # Only accesible for admins
-
-
+    permission_classes = [permissions.IsAdminUser]  # Only accessible to admins
