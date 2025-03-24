@@ -6,12 +6,12 @@ from django.contrib.auth import get_user_model
 from .models import ToDo, Group
 from .serializers import ToDoSerializer, UserSerializer, GroupSerializer
 
-# Rejestracja użytkownika
+# User registration
 class RegisterView(generics.CreateAPIView):
-    queryset = get_user_model().objects.all()  # Używamy niestandardowego modelu użytkownika
+    queryset = get_user_model().objects.all()  # Using the custom user model
     serializer_class = UserSerializer
 
-# Login – token JWT
+# Login – JWT token generation
 class LoginView(APIView):
     def post(self, request):
         from django.contrib.auth import authenticate
@@ -26,78 +26,124 @@ class LoginView(APIView):
             })
         return Response({'error': 'Invalid Credentials'}, status=400)
 
-# Listowanie i tworzenie zadań
-class ToDoListCreateView(generics.ListCreateAPIView):
-    serializer_class = ToDoSerializer
+# Filtering tasks by user, group, and priority
+def get_filtered_todos(request, user=None):
+    """
+    Filters tasks based on the user, group, and priority.
+    """
+    queryset = ToDo.objects.all()
+
+    if user:
+        queryset = queryset.filter(user=user)
+    else:
+        if not request.user.is_superuser:
+            queryset = queryset.filter(user=request.user)
+
+    # Filter by group
+    group_id = request.query_params.get('group_id', None)
+    if group_id:
+        queryset = queryset.filter(group_id=group_id)
+
+    # Filter by priority
+    priority = request.query_params.get('priority', None)
+    if priority:
+        queryset = queryset.filter(priority=priority)
+
+    # Ordering by priority
+    ordering = request.query_params.get('ordering', None)
+    if ordering:
+        queryset = queryset.order_by(ordering)
+
+    return queryset
+
+# Returning tasks assigned directly to the user (not belonging to any group)
+class ToDoByUserView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_queryset(self):
-        if self.request.user.is_superuser:
-            return ToDo.objects.all()  # Admin może zobaczyć wszystkie zadania
-        return ToDo.objects.filter(user=self.request.user)  # Inni użytkownicy tylko swoje
-
-    def perform_create(self, serializer):
-        group_id = self.request.data.get('group')
-        user_id = self.request.data.get('user')
+    def get(self, request):
+        # Filtering tasks assigned directly to the user (i.e., without a group)
+        todos = get_filtered_todos(request)
+        todos_without_group = todos.filter(group=None)
         
-        if group_id:
-            group_instance = Group.objects.get(id=group_id)
-            for member in group_instance.members.all():
-                serializer.save(user=member)
-        elif user_id:
-            user_instance = get_user_model().objects.get(id=user_id)  # Używamy get_user_model()
-            serializer.save(user=user_instance)
-        else:
-            # Domyślnie przypisz zadanie do aktualnie zalogowanego użytkownika
-            serializer.save(user=self.request.user)
+        # Returning tasks that are not assigned to a group
+        return Response(ToDoSerializer(todos_without_group, many=True).data)
 
-# Widok szczegółów zadania – umożliwia aktualizację i usunięcie zadania
+# Returning tasks assigned to the user, grouped by their respective groups
+class ToDoByGroupView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        groups = user.groups.all()
+        
+        grouped_todos = {}
+        
+        # Grouping tasks by group
+        for group in groups:
+            todos = get_filtered_todos(request, user=user).filter(group=group)
+            if todos:
+                grouped_todos[group.name] = ToDoSerializer(todos, many=True).data
+
+        return Response(grouped_todos)
+
+# Task detail view – allows updating and deleting a task
 class ToDoDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = ToDoSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         if self.request.user.is_superuser:
-            return ToDo.objects.all()  # Admin może zobaczyć wszystkie zadania
-        return ToDo.objects.filter(user=self.request.user)  # Inni użytkownicy tylko swoje
+            return ToDo.objects.all()  # Admin can view all tasks
+        return ToDo.objects.filter(user=self.request.user)  # Other users can view only their tasks
 
-# CRUD dla grupy
-class GroupListCreateView(generics.ListCreateAPIView):
-    queryset = Group.objects.all()
-    serializer_class = GroupSerializer
-    permission_classes = [permissions.IsAdminUser]
+# User creates a task only for themselves (no group assignment)
+class ToDoListCreateView(generics.ListCreateAPIView):
+    serializer_class = ToDoSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
-class GroupDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Group.objects.all()
-    serializer_class = GroupSerializer
-    permission_classes = [permissions.IsAdminUser]
+    def get_queryset(self):
+        if self.request.user.is_superuser:
+            return ToDo.objects.all()  # Admin sees all tasks
+        return ToDo.objects.filter(user=self.request.user)  # Regular users can only see their tasks
 
-# Admin: dodaje zadanie użytkownikowi lub grupie
-class AdminAssignToDoView(APIView):
-    permission_classes = [permissions.IsAdminUser]
-
-    def post(self, request):
-        data = request.data
+    def perform_create(self, serializer):
+        user = self.request.user
+        data = self.request.data
         group_id = data.get('group')
         user_id = data.get('user')
-        serializer = ToDoSerializer(data=data)
 
-        if serializer.is_valid():
+        # For admin – full control (optional)
+        if user.is_superuser:
             if group_id:
-                group = Group.objects.get(id=group_id)
-                for member in group.members.all():
+                group_instance = Group.objects.get(id=group_id)
+                for member in group_instance.members.all():
                     ToDo.objects.create(
                         user=member,
-                        group=group,
+                        group=group_instance,
                         title=data['title'],
                         description=data.get('description', ''),
                         priority=data.get('priority', 'Medium'),
                         due_date=data.get('due_date', None)
                     )
-                return Response({'message': 'Zadania dodane grupie.'})
+                return
             elif user_id:
-                serializer.save(user=get_user_model().objects.get(id=user_id))  # Używamy get_user_model()
-                return Response(serializer.data)
-            else:
-                return Response({'error': 'Podaj group_id lub user_id.'}, status=400)
-        return Response(serializer.errors, status=400)
+                target_user = get_user_model().objects.get(id=user_id)
+                serializer.save(user=target_user)
+                return
+
+        # For regular users – no group or assignment to other users allowed
+        if group_id or user_id:
+            raise PermissionError("You cannot assign tasks to others or to a group.")
+        
+        serializer.save(user=user)  # Task assigned to the user
+
+# View for admin - list of groups
+class GroupListView(generics.ListAPIView):
+    queryset = Group.objects.all()  # Retrieve all groups
+    serializer_class = GroupSerializer  # Use the Group serializer to format the response
+    permission_classes = [permissions.IsAdminUser]  # Only accessible to admins
+
+class GroupDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Group.objects.all()
+    serializer_class = GroupSerializer
+    permission_classes = [permissions.IsAdminUser]
