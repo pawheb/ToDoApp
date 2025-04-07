@@ -32,6 +32,8 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['*']
 
+CSRF_TRUSTED_ORIGINS = ['https://gonext-a7hthre4g0avd7fr.polandcentral-01.azurewebsites.net']
+
 AUTH_USER_MODEL = 'todos.CustomUser' 
 
 # Application definition
