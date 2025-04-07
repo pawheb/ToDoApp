@@ -172,14 +172,14 @@ class ToDoListCreateView(generics.ListCreateAPIView):
 class GroupListView(generics.ListAPIView):
     queryset = Group.objects.all()  # Retrieve all groups
     serializer_class = GroupSerializer  # Use the Group serializer to format the response
-    permission_classes = [AllowAny]  # Only accessible to admins
+    permission_classes = [permissions.IsAuthenticated]  # Only accessible to admins
     
 
 # View for admins – group detail view
 class GroupDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Group.objects.all()
     serializer_class = GroupSerializer
-    permission_classes = [permissions.IsAdminUser]  # Only accessible to admins
+    permission_classes = [permissions.IsAuthenticated]  # Only accessible to admins
     def get_queryset(self):
         queryset = super().get_queryset()
         print(queryset)  # Debug: Sprawdź zawartość queryset
@@ -189,10 +189,15 @@ class GroupDetailView(generics.RetrieveUpdateDestroyAPIView):
 class GroupCreateView(generics.CreateAPIView):
     queryset = Group.objects.all()
     serializer_class = GroupSerializer
-    permission_classes = [permissions.IsAdminUser]  # Only accessible to admins
+    permission_classes = [permissions.IsAuthenticated]
+    def perform_create(self, serializer):
+        group = serializer.save(admin=self.request.user)
+        # Automatycznie dodaj twórcę do członków grupy
+        group.members.add(self.request.user)
+        group.members.add(self.request.user)
 
 class InvitationCreateView(APIView):
-    permission_classes = [IsAdminUser]  # Tylko administratorzy mogą generować zaproszenia
+    permission_classes = [permissions.IsAuthenticated]  # Tylko administratorzy mogą generować zaproszenia
     
     @swagger_auto_schema(
         request_body=InvitationCreateSerializer,  # Używamy serializatora jako body

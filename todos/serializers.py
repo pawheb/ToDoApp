@@ -36,8 +36,14 @@ class UserSerializer(serializers.ModelSerializer):
         return user
 
 class GroupSerializer(serializers.ModelSerializer):
-    members = UserSerializer(many=True)  # Używamy serializatora dla użytkowników
-
     class Meta:
         model = Group
-        fields = ['id', 'name', 'members']
+        fields = ['id', 'name']  # Nie wymagamy members na wejściu
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        if request and request.user:
+            group = Group.objects.create(name=validated_data['name'], admin=request.user)
+            group.members.add(request.user)
+            return group
+        raise serializers.ValidationError("Nie można utworzyć grupy bez uwierzytelnionego użytkownika.")

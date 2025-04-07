@@ -18,6 +18,14 @@ class CustomUser(AbstractUser):
 class Group(models.Model):
     name = models.CharField(max_length=100, unique=True)
     members = models.ManyToManyField(get_user_model(), related_name='custom_groups')
+    admin = models.ForeignKey(
+        get_user_model(),
+        on_delete=models.CASCADE,
+        related_name='administered_groups',
+        null=True,
+        blank = True
+    )
+
 
     def __str__(self):
         return self.name
